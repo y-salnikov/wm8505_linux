@@ -1,0 +1,5 @@
+#!/bin/sh
+# this mkimage is from U-Boot, if you are not on (or compatible with) x86 linux, bring your own
+./mkimage -A arm -O linux -T script -C none -a 1 -e 0 -n "script image" -d cmd scriptcmd
+./mkimage -A arm -O linux -T script -C none -a 1 -e 0 -n "install script image" -d cmd.install scriptcmd.install
+cp scriptcmd scriptcmd.orig

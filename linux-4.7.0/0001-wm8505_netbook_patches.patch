@@ -1,0 +1,465 @@
+From 7978a9eb9ccbfbbc9b69138a4cce88363c671fb1 Mon Sep 17 00:00:00 2001
+From: y-salnikov <y.salnikov65535@gmail.com>
+Date: Fri, 29 Jul 2016 18:41:10 +0400
+Subject: [PATCH] wm8505_netbook_patches
+
+---
+ .../devicetree/bindings/serio/intel,8042.txt       |  82 ++++++++++
+ arch/arm/boot/dts/wm8505.dtsi                      |  24 +++
+ arch/arm/mach-vt8500/Kconfig                       |   1 +
+ drivers/input/serio/i8042-of.h                     | 168 +++++++++++++++++++++
+ drivers/input/serio/i8042.c                        |  51 ++++++-
+ drivers/input/serio/i8042.h                        |   3 +
+ drivers/video/fbdev/wm8505fb.c                     |   2 +-
+ 7 files changed, 324 insertions(+), 7 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/serio/intel,8042.txt
+ create mode 100644 drivers/input/serio/i8042-of.h
+
+diff --git a/Documentation/devicetree/bindings/serio/intel,8042.txt b/Documentation/devicetree/bindings/serio/intel,8042.txt
+new file mode 100644
+index 0000000..e60c835
+--- /dev/null
++++ b/Documentation/devicetree/bindings/serio/intel,8042.txt
+@@ -0,0 +1,82 @@
++* Intel 8042 interface
++
++This is an attempt to make a compatible binding with existing implementation
++from SPARC and PowerPC, regulated by the Open Firmware standard. Since new
++devices like ARM SoCs are using the newer Flattened Device Tree, this binding
++should be also compatible with ePAPR, by introducing the 'compatible' property.
++
++Required properties:
++- #address-cells: Must be <1>, since the address for input devices is virtual.
++
++- #size-cells: Must be <0>, since the size is not applicable for the virtual
++  address.
++
++- compatible: Should be "intel,8042".
++
++- reg: Specifies the base address and size of the interface registers in the
++  following order:
++  - DATA: The serial data buffer address.
++  - COMMAND/STATUS: Has the status of the keyboard controller and interface,
++    allows to send commands to the controller.
++
++Optional properties:
++- interrupts: One (keyboard) or two (keyboard and auxiliary) interrupts.
++
++- interrupt-names: names of interrupts, must be "kbd", "aux". If not specified,
++  the first interrupt is "kbd", and the second is "aux".
++
++Child nodes:
++The i8042 interface may control input devices such as keyboard and mouse. Each
++input device is represented by a child node. The input device could be
++identified by the 'compatible' property or the node name (obsolete).
++
++Required properties:
++- reg: Specifies the device virtual address. These numbers should not be
++  duplicated.
++- compatible: should be "pnpPNP,303" for keyboard, and "pnpPNP,f03" for mouse.
++
++Optional properties:
++- interrupts: Specifies the interrupt number for the device. Overwrites the
++  value from the parent node.
++
++Examples:
++
++// Most preferred way
++ps2@d8008800 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	compatible = "intel,8042";
++	reg = <0xd8008800 0x1>, <0xd8008804 0x1>;
++	interrupts = <23>, <4>;
++	interrupt-names = "kbd", "aux";
++
++	keyboard@0 {
++		reg = <0x0>;
++		compatible = "pnpPNP,303";
++	};
++
++	mouse@1 {
++		reg = <0x1>;
++		compatible = "pnpPNP,f03";
++	};
++};
++
++// PowerPC
++i8042@60 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	reg = <0x1 0x60 0x1 0x1 0x64 0x1>;
++	interrupts = <1 3 12 3>;
++	interrupt-parent = <&i8259>;
++	// 'compatible' property has to be added by the platform code
++
++	keyboard@0 {
++		reg = <0x0>;
++		compatible = "pnpPNP,303";
++	};
++
++	mouse@1 {
++		reg = <0x1>;
++		compatible = "pnpPNP,f03";
++	};
++};
+\ No newline at end of file
+diff --git a/arch/arm/boot/dts/wm8505.dtsi b/arch/arm/boot/dts/wm8505.dtsi
+index e9ef539..918ec83 100644
+--- a/arch/arm/boot/dts/wm8505.dtsi
++++ b/arch/arm/boot/dts/wm8505.dtsi
+@@ -197,6 +197,30 @@
+ 			};
+ 		};
+ 
++		i8042@d8008800 {
++			#size-cells = <0>;
++			#address-cells = <1>;
++			compatible = "intel,8042";
++			reg = <0xd8008800 0x1>, <0xd8008804 0x1>;
++			interrupts = <23>, <4>;
++			interrupt-names = "kbd", "aux";
++
++			keyboard@0 {
++				reg = <0x0>;
++				compatible = "pnpPNP,303";
++			};
++
++			mouse@1 {
++				reg = <0x1>;
++				compatible = "pnpPNP,f03";
++			};
++		};
++		eth0@d8320000 {
++                        compatible = "via,velocity-vt6110";
++                        reg = <0xd8004000 0x400>;
++                        interrupts = <10>;
++                        no-eeprom; 
++                };
+ 		timer@d8130100 {
+ 			compatible = "via,vt8500-timer";
+ 			reg = <0xd8130100 0x28>;
+diff --git a/arch/arm/mach-vt8500/Kconfig b/arch/arm/mach-vt8500/Kconfig
+index aaaa24f..01d9745 100644
+--- a/arch/arm/mach-vt8500/Kconfig
++++ b/arch/arm/mach-vt8500/Kconfig
+@@ -12,6 +12,7 @@ config ARCH_WM8505
+  	depends on ARCH_MULTI_V5
+  	select ARCH_VT8500
+  	select CPU_ARM926T
++	select ARCH_MIGHT_HAVE_PC_SERIO
+  	help
+ 
+ config ARCH_WM8750
+diff --git a/drivers/input/serio/i8042-of.h b/drivers/input/serio/i8042-of.h
+new file mode 100644
+index 0000000..3b95b86
+--- /dev/null
++++ b/drivers/input/serio/i8042-of.h
+@@ -0,0 +1,168 @@
++#ifndef _I8042_OF_H
++#define _I8042_OF_H
++
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/of_address.h>
++#include <linux/of_irq.h>
++
++/*
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ */
++static void __iomem *i8042_data;
++static void __iomem *i8042_ctrl;
++#define I8042_DATA_REG			i8042_data
++#define I8042_COMMAND_REG		i8042_ctrl
++#define I8042_STATUS_REG		i8042_ctrl
++
++/*
++ * Names.
++ */
++#define I8042_KBD_PHYS_DESC		"i8042/serio0"
++#define I8042_AUX_PHYS_DESC		"i8042/serio1"
++#define I8042_MUX_PHYS_DESC		"i8042/serio%d"
++
++#define OBP_PS2KBD_NAME1		"kb_ps2"
++#define OBP_PS2KBD_NAME2		"keyboard"
++#define OBP_PS2MS_NAME1			"kdmouse"
++#define OBP_PS2MS_NAME2			"mouse"
++
++/*
++ * IRQs.
++ */
++static int i8042_kbd_irq;
++static int i8042_aux_irq;
++#define I8042_KBD_IRQ			i8042_kbd_irq
++#define I8042_AUX_IRQ			i8042_aux_irq
++
++static inline int i8042_read_data(void)
++{
++	return readb(I8042_DATA_REG);
++}
++
++static inline void i8042_write_data(int val)
++{
++	writeb(val, I8042_DATA_REG);
++}
++
++static inline int i8042_read_status(void)
++{
++	return readb(I8042_STATUS_REG);
++}
++
++static inline void i8042_write_command(int val)
++{
++	writeb(val, I8042_COMMAND_REG);
++}
++
++/*
++ * Device Tree/platform code
++ */
++static int __init i8042_platform_probe_subdevice(struct platform_device *pdev,
++	struct device_node *psub)
++{
++	if (!pdev || !psub)
++		return -EINVAL;
++
++	if (of_device_is_compatible(psub, "pnpPNP,303") ||
++	    !strcmp(psub->name, OBP_PS2KBD_NAME1) ||
++	    !strcmp(psub->name, OBP_PS2KBD_NAME2)) {
++		i8042_kbd_irq = irq_of_parse_and_map(psub, 0);
++		if (i8042_kbd_irq <= 0)
++			i8042_kbd_irq = platform_get_irq_byname(pdev, "kbd");
++		if (i8042_kbd_irq <= 0)
++			i8042_kbd_irq = platform_get_irq(pdev, 0);
++		return 0;
++	}
++
++	if (of_device_is_compatible(psub, "pnpPNP,f03") ||
++	    !strcmp(psub->name, OBP_PS2MS_NAME1) ||
++	    !strcmp(psub->name, OBP_PS2MS_NAME2)) {
++		i8042_aux_irq = irq_of_parse_and_map(psub, 0);
++		if (i8042_aux_irq <= 0)
++			i8042_aux_irq = platform_get_irq_byname(pdev, "aux");
++		if (i8042_aux_irq <= 0)
++			i8042_aux_irq = platform_get_irq(pdev, 1);
++		return 0;
++	}
++
++	return -ENODEV;
++}
++
++static int __init i8042_platform_probe(struct platform_device *pdev)
++{
++	struct device_node *node;
++	struct resource *res;
++
++	if (i8042_data || i8042_ctrl)
++		return -EBUSY;
++
++	node = pdev->dev.of_node;
++	if (!node)
++		return -EINVAL;
++
++	node = node->child;
++	while (node) {
++		i8042_platform_probe_subdevice(pdev, node);
++		node = node->sibling;
++	}
++
++	if (i8042_kbd_irq <= 0)
++		i8042_nokbd = true;
++	if (i8042_aux_irq <= 0)
++		i8042_noaux = true;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	i8042_data = devm_ioremap_resource(&pdev->dev, res);
++	if (IS_ERR(i8042_data))
++		return PTR_ERR(i8042_data);
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++	i8042_ctrl = devm_ioremap_resource(&pdev->dev, res);
++	if (IS_ERR(i8042_ctrl)) {
++		devm_iounmap(&pdev->dev, i8042_data);
++		return PTR_ERR(i8042_ctrl);
++	}
++
++	return 0;
++}
++
++static int i8042_platform_remove(struct platform_device *pdev)
++{
++	if (i8042_data) {
++		if (!IS_ERR(i8042_data))
++			devm_iounmap(&pdev->dev, i8042_data);
++		i8042_data = NULL;
++	}
++
++	if (i8042_ctrl) {
++		if (!IS_ERR(i8042_ctrl))
++			devm_iounmap(&pdev->dev, i8042_ctrl);
++		i8042_ctrl = NULL;
++	}
++
++	return 0;
++}
++
++static int __init i8042_platform_init(void)
++{
++	i8042_data = NULL;
++	i8042_ctrl = NULL;
++	i8042_reset = true;
++
++	return 0;
++}
++
++static inline void i8042_platform_exit(void)
++{
++}
++
++static const struct of_device_id i8042_of_match[] = {
++	{ .compatible = "intel,8042", },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, i8042_of_match);
++
++#endif
+diff --git a/drivers/input/serio/i8042.c b/drivers/input/serio/i8042.c
+index 4541957..38ab844 100644
+--- a/drivers/input/serio/i8042.c
++++ b/drivers/input/serio/i8042.c
+@@ -1492,9 +1492,30 @@ static int i8042_kbd_bind_notifier(struct notifier_block *nb,
+ static int __init i8042_probe(struct platform_device *dev)
+ {
+ 	int error;
++	void * _PIO_base;
+ 
+-	i8042_platform_device = dev;
+ 
++	if (i8042_platform_device) {
++		printk("%s: multiple controllers found, ignoring '%s'\n",
++			__func__, dev->name);
++		return 0;
++	}
++#ifdef SERIO_I8042_OF
++	if (!dev->dev.of_node) {
++		printk("%s: non-OF device found, ignoring '%s'\n",
++			__func__, dev->name);
++		return 0;
++	}
++
++	error = i8042_platform_probe(dev);
++	if (error)
++		return error;
++#endif
++	error = i8042_controller_check();
++	if (error)
++		return error;
++
++	i8042_platform_device = dev;
+ 	if (i8042_reset) {
+ 		error = i8042_controller_selftest();
+ 		if (error)
+@@ -1525,7 +1546,11 @@ static int __init i8042_probe(struct platform_device *dev)
+  * Ok, everything is ready, let's register all serio ports
+  */
+ 	i8042_register_ports();
+-
++	
++	_PIO_base= ioremap_nocache(0xd8130000,0x4096);
++	iowrite32(0x107,_PIO_base+0x330);		// magic
++	iounmap(_PIO_base);
++	
+ 	return 0;
+ 
+  out_fail:
+@@ -1539,9 +1564,17 @@ static int __init i8042_probe(struct platform_device *dev)
+ 
+ static int i8042_remove(struct platform_device *dev)
+ {
++	if (dev != i8042_platform_device) {
++		dbg("%s: ignoring device %s\n", __func__, dev->name);
++		return 0;
++	}
++
+ 	i8042_unregister_ports();
+ 	i8042_free_irqs();
+ 	i8042_controller_reset(false);
++#ifdef SERIO_I8042_OF
++	i8042_platform_remove(dev);
++#endif
+ 	i8042_platform_device = NULL;
+ 
+ 	return 0;
+@@ -1553,6 +1586,9 @@ static struct platform_driver i8042_driver = {
+ #ifdef CONFIG_PM
+ 		.pm	= &i8042_pm_ops,
+ #endif
++#ifdef SERIO_I8042_OF
++		.of_match_table = i8042_of_match,
++#endif
+ 	},
+ 	.remove		= i8042_remove,
+ 	.shutdown	= i8042_shutdown,
+@@ -1569,15 +1605,16 @@ static int __init i8042_init(void)
+ 
+ 	dbg_init();
+ 
++	i8042_platform_device = NULL;
+ 	err = i8042_platform_init();
+ 	if (err)
+ 		return err;
+ 
+-	err = i8042_controller_check();
+-	if (err)
+-		goto err_platform_exit;
+-
++#ifdef SERIO_I8042_OF
++	pdev = ERR_PTR(platform_driver_probe(&i8042_driver, i8042_probe));
++#else
+ 	pdev = platform_create_bundle(&i8042_driver, i8042_probe, NULL, 0, NULL, 0);
++#endif
+ 	if (IS_ERR(pdev)) {
+ 		err = PTR_ERR(pdev);
+ 		goto err_platform_exit;
+@@ -1595,7 +1632,9 @@ static int __init i8042_init(void)
+ 
+ static void __exit i8042_exit(void)
+ {
++#ifndef SERIO_I8042_OF
+ 	platform_device_unregister(i8042_platform_device);
++#endif
+ 	platform_driver_unregister(&i8042_driver);
+ 	i8042_platform_exit();
+ 
+diff --git a/drivers/input/serio/i8042.h b/drivers/input/serio/i8042.h
+index 1db0a40..131f082 100644
+--- a/drivers/input/serio/i8042.h
++++ b/drivers/input/serio/i8042.h
+@@ -28,6 +28,9 @@
+ #include "i8042-x86ia64io.h"
+ #elif defined(CONFIG_UNICORE32)
+ #include "i8042-unicore32io.h"
++#elif defined(CONFIG_ARCH_MIGHT_HAVE_PC_SERIO) && defined(CONFIG_USE_OF)
++#define SERIO_I8042_OF
++#include "i8042-of.h"
+ #else
+ #include "i8042-io.h"
+ #endif
+diff --git a/drivers/video/fbdev/wm8505fb.c b/drivers/video/fbdev/wm8505fb.c
+index e925619..f4f47f1 100644
+--- a/drivers/video/fbdev/wm8505fb.c
++++ b/drivers/video/fbdev/wm8505fb.c
+@@ -346,7 +346,7 @@ static int wm8505fb_probe(struct platform_device *pdev)
+ 	fbi->fb.screen_base		= fb_mem_virt;
+ 	fbi->fb.screen_size		= fb_mem_len;
+ 
+-	fbi->contrast = 0x10;
++	fbi->contrast = 0x80;
+ 	ret = wm8505fb_set_par(&fbi->fb);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "Failed to set parameters\n");
+-- 
+2.1.4
+

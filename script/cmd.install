@@ -1,0 +1,52 @@
+lcdinit
+cleanlcd
+textout 30 30 "Linux kernel installer - last chance to abort: 8 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 7 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 6 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 5 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 4 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 3 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 2 seconds ..." ffffff
+sleep 1
+textout 30 30 "Linux kernel installer - last chance to abort: 1 seconds ..." ffffff
+sleep 1
+cleanlcd
+textout 30 30 "Erasing NAND..." ff0000
+nandrw erase all
+textout 30 60 "Done!" 00ff00
+mmcinit
+setenv touchic  false
+setenv audioic  vt1613
+setenv gpiostate  1
+setenv battmax 250
+setenv battmin 185
+setenv chargetest false
+setenv battgpio 4
+setenv audio.recordselect
+setenv lcdparam 1,30000,8,800,480,48,40,40,3,29,13
+setenv logocmd 'nand read 3c00000 12f00000 100000;logo show'
+setenv bootcmd 'nand read 0 0 300000;bootm 0'
+setenv regop D8110064|C,D811008C|C,D81100B4&~0x4,D81100B4|0x8,D8130054|0x1
+setenv LOGO_STRING
+setenv bootargs mem=112M root=/dev/mtdblock9
+saveenv
+
+fatload mmc 0 0 script/logo.bmp
+nand write 0 12F00000 $(filesize)
+
+textout 30 90 "Writing kernel to NAND..." ff0000
+fatload mmc 0 0 script/uzImage.bin
+nand write 0 0 $(filesize)
+textout 30 120 "Done!" 00ff00
+
+textout 30 150 "Booting linux, will build root fs" ffffff
+textout 100 180 "(on /dev/mtdblock9)" eeeeee
+fatload mmc 0 1000000 script/installrd.gz
+setenv bootargs mem=112M root=/dev/ram rw initrd=0x01000000,32M init=/linuxrc
+bootm 0

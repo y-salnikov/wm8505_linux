@@ -1,0 +1,4 @@
+lcdinit
+fatload mmc 0 0 /script/uImage
+setenv bootargs mem=112M root=/dev/mmcblk0p2 loglevel=3
+bootm 0

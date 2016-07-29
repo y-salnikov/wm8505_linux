@@ -1,0 +1,12 @@
+[Unit]
+Description=Enable WIFI with GPIO
+Before=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/enable_wifi.sh
+
+[Install]
+WantedBy=multi-user.target
+
+
